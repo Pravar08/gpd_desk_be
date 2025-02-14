@@ -1,15 +1,14 @@
 const { Pool } = require('pg');
 
-// Create a connection pool
 const pool = new Pool({
-  host: 'localhost',           // Host (same as in pgAdmin)
-  port: 5432,                  // Default PostgreSQL port
-  user: 'postgres',            // Your PostgreSQL username
-  password: '987654321',       // Your PostgreSQL password
-  database: 'gps_dev',         // The name of your database
-  max: 10,                     // Max connections in the pool
-  idleTimeoutMillis: 30000,    // Close idle clients after 30 seconds
-  connectionTimeoutMillis: 2000, // Timeout for new connections (in ms)
+  host: '13.51.239.249',       // Use EC2 Public IP
+  port: 5432,                  // PostgreSQL default port
+  user: 'postgres',            // PostgreSQL username
+  password: 'gps_desk_dev',       // PostgreSQL password
+  database: 'postgres',         // Database name
+  max: 20,                     // Increase max connections for workers
+  idleTimeoutMillis: 30000,     // Close idle clients after 30 sec
+  connectionTimeoutMillis: 5000 // Increase timeout for new connections
 });
 
 // Query wrapper for executing SQL queries
@@ -18,11 +17,12 @@ const query = async (text, params) => {
   try {
     const res = await client.query(text, params);
     return res;
+  } catch (error) {
+    console.error('Database query error:', error);
+    throw error;
   } finally {
-    client.release(); // Always release the client back to the pool
+    client.release();
   }
 };
 
-module.exports = {
-  query,  // Export query function
-};
+module.exports = { query, pool };

@@ -75,7 +75,7 @@ function extractLatLong(packet) {
       throw new Error('Packet is too short');
   }
 
-  // Extract Latitude (4 bytes, starting at byte 12 to 15)
+  // Extract Latitude (4 bytes, starting at byPte 12 to 15)
   const latHex = packet.slice(24, 28);  // Correct 4-byte slice for latitude
   const latDecimal = parseInt(latHex.toString('hex'), 16);  // Convert to decimal
   console.log('Raw Latitude Hex:', latHex.toString('hex')); // Debugging log

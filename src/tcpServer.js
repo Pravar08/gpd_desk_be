@@ -264,32 +264,52 @@ function parsePacket(data, socket) {
 
 // Start TCP Server
 function startTCPServer() {
-  const server = net.createServer((socket) => {
+  const uniqueConnections = new Set();
+let maxConnections = 0; // Track the max count of concurrent connections
+
+const server = net.createServer((socket) => {
     const clientAddress = `${socket.remoteAddress}:${socket.remotePort}`;
-    console.log(`Device connected: ${clientAddress}`);
+
+    // Add the device to the set
+    uniqueConnections.add(clientAddress);
+    console.log(`New device connected: ${clientAddress}`);
+    
+    // Update max concurrent connections
+    if (uniqueConnections.size > maxConnections) {
+        maxConnections = uniqueConnections.size;
+    }
+
+    console.log('Current connections:', uniqueConnections.size);
+    console.log('Max connections observed:', maxConnections);
 
     socket.on('data', (data) => {
-      console.log(`Received binary data from ${clientAddress}:`);
-      try {
-        parsePacket(data, socket);
-      } catch (error) {
-        console.error('Error parsing packet:', error.message);
-      }
+        const hexData = data.toString('hex').toUpperCase();
+        console.log(`Received data from ${clientAddress}: ${hexData}`);
+
+        try {
+            parsePacket(data, socket);
+        } catch (error) {
+            console.error('Error parsing packet:', error.message);
+        }
     });
 
     socket.on('close', () => {
-      console.log(`Device disconnected: ${clientAddress}`);
+        // Remove from the set when disconnected
+        uniqueConnections.delete(clientAddress);
+        console.log(`Device disconnected: ${clientAddress}`);
+        console.log('Current connections:', uniqueConnections.size);
+        console.log('Max connections observed:', maxConnections);
     });
 
     socket.on('error', (err) => {
-      console.error(`Socket error for ${clientAddress}:`, err.message);
+        console.error(`Socket error for ${clientAddress}:`, err.message);
     });
-  });
+});
 
-  server.listen(6000, () => {
+  server.listen(2001, () => {
     console.log('TCP server running on port 6000');
   });
 }
 
 // Start the server
-module.exports = { startTCPServer ,getCrc16};
+module.exports = { startTCPServer ,getCrc16};
