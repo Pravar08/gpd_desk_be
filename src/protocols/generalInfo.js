@@ -128,7 +128,7 @@ function parseTirePressureData(buffer) {
         dataContent = "Unknown Data Type";
     }
   
-    return {
+    return {data:{
       startBit,
       length,
       protocolNumber,
@@ -136,7 +136,7 @@ function parseTirePressureData(buffer) {
       dataContent,
       serialNumber,
       errorCheck,
-      stopBit
+      stopBit}
     };
   }
   

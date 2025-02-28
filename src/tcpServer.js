@@ -1,6 +1,12 @@
 const net = require('net');
 const { generalInfoPacketParse } = require('./protocols/generalInfo');
 const { parsePacketAlarm } = require('./protocols/alarm');
+const { Worker } = require('worker_threads');
+const path = require('path');
+const { produceToKafka } = require('./kafka');
+const { query } = require('./db');
+const { loginPacketInsertion, extractIMEI } = require('./modules/login');
+const { insertLatLong } = require('./modules/latLong');
 
 
 // CRC-16 lookup table
@@ -71,6 +77,7 @@ function sendResponsePacketLogin(socket, serialNumber) {
 
   console.log('Sending response packet:', responsePacket);
   socket.write(responsePacket);
+  return {responseData:responsePacket.toString('hex'),data:serialNumber}
 }
 
 function sendHeartbeatPacket(socket, serialNumber) {
@@ -98,6 +105,7 @@ function sendHeartbeatPacket(socket, serialNumber) {
   
   // Send the response packet via the socket
   socket.write(responsePacket);
+  return{responseData:responsePacket.toString('hex'),data:serialBuffer}
 }
 
 
@@ -225,17 +233,22 @@ function parsePacket(data, socket) {
 
     if (receivedCRC === calculatedCRC) {
       console.log('CRC validation passed. Sending response...');
-      sendResponsePacketLogin(socket, serialNumber);
+     const responseLogin= sendResponsePacketLogin(socket, serialNumber);
+     const imei=extractIMEI(data.toString('hex'))
+       loginPacketInsertion(responseLogin.data,imei,data.toString('hex'),responseLogin.responseData)
     } else {
       console.error(`CRC validation failed. Received: ${receivedCRC.toString(16).toUpperCase()}, Calculated: ${calculatedCRC.toString(16).toUpperCase()}`);
     }
   } 
   if (protocolNumber === 0x22) { // Protocol for GPS data
     console.log('GPS Data Protocol Detected');
+    const serialNumber = data.slice(data.length - 6, data.length - 4).toString('hex');
 
     // Parse latitude and longitude
     const { latitude, longitude,speed } = extractLatLong(data);
     console.log(`Latitude: ${latitude}, Longitude: ${longitude},speed: ${speed}`);
+    insertLatLong(serialNumber,latitude,longitude,speed)
+    return {resData:''.responseData,data:JSON.stringify({Latitude:latitude,longitude,speed })}
 
     // No response needed for GPS data
   } 
@@ -247,14 +260,21 @@ function parsePacket(data, socket) {
     const gsmSignalStrength = data[5]; // GSM Signal Strength (1 byte)
     const alarmLanguage = data.slice(6, 8).toString('hex'); // Alarm/Language (2 bytes)
     const serialNumber = data.slice(9, 11).toString('hex'); // Serial Number (2 bytes)
-    sendHeartbeatPacket(socket,serialNumber)
+   const responseData= sendHeartbeatPacket(socket,serialNumber)
+    return {resData:responseData.responseData,data:JSON.stringify({serialNumber:responseData.data})}
   
   }
   if(protocolNumber === 0x94){
-   generalInfoPacketParse(data)
+  const responseData= generalInfoPacketParse(data)
+  return {resData:'',data:JSON.stringify({serialNumber:responseData.data})}
   }if(protocolNumber === 0x26){
-    parsePacketAlarm(data)
+    const responseData= parsePacketAlarm(data)
+  return {resData:'',data:JSON.stringify({serialNumber:responseData.data})}
 
+
+  }
+  else{
+    return {resData:'unintegrated protocol',data:'Unknown protocol'}
   }
   
   
@@ -263,53 +283,133 @@ function parsePacket(data, socket) {
 
 
 // Start TCP Server
-function startTCPServer() {
-  const uniqueConnections = new Set();
-let maxConnections = 0; // Track the max count of concurrent connections
+// function startTCPServer() {
+//   const uniqueConnections = new Set();
+// let maxConnections = 0; // Track the max count of concurrent connections
 
-const server = net.createServer((socket) => {
-    const clientAddress = `${socket.remoteAddress}:${socket.remotePort}`;
+// const server = net.createServer((socket) => {
+//     const clientAddress = `${socket.remoteAddress}:${socket.remotePort}`;
 
-    // Add the device to the set
-    uniqueConnections.add(clientAddress);
-    console.log(`New device connected: ${clientAddress}`);
+//     // Add the device to the set
+//     uniqueConnections.add(clientAddress);
+//     console.log(`New device connected: ${clientAddress}`);
     
-    // Update max concurrent connections
-    if (uniqueConnections.size > maxConnections) {
-        maxConnections = uniqueConnections.size;
-    }
+//     // Update max concurrent connections
+//     if (uniqueConnections.size > maxConnections) {
+//         maxConnections = uniqueConnections.size;
+//     }
 
-    console.log('Current connections:', uniqueConnections.size);
-    console.log('Max connections observed:', maxConnections);
+//     console.log('Current connections:', uniqueConnections.size);
+//     console.log('Max connections observed:', maxConnections);
 
-    socket.on('data', (data) => {
-        const hexData = data.toString('hex').toUpperCase();
-        console.log(`Received data from ${clientAddress}: ${hexData}`);
+//     socket.on('data', (data) => {
+//     console.log('Max connections observed:', maxConnections);
 
-        try {
-            parsePacket(data, socket);
-        } catch (error) {
-            console.error('Error parsing packet:', error.message);
-        }
+//         const hexData = data.toString('hex').toUpperCase();
+//         console.log(`Received data from ${clientAddress}: ${hexData}`);
+
+//         try {
+//             parsePacket(data, socket);
+//         } catch (error) {
+//             console.error('Error parsing packet:', error.message);
+//         }
+//     });
+
+//     socket.on('close', () => {
+//         // Remove from the set when disconnected
+//         uniqueConnections.delete(clientAddress);
+//         console.log(`Device disconnected: ${clientAddress}`);
+//         console.log('Current connections:', uniqueConnections.size);
+//         console.log('Max connections observed:', maxConnections);
+//     });
+
+//     socket.on('error', (err) => {
+//         console.error(`Socket error for ${clientAddress}:`, err.message);
+//     });
+// });
+
+//   server.listen(2001, () => {
+//     console.log('TCP server running on port 6000');
+//   });
+// }
+
+const uniqueConnections = new Set();
+let maxConnections = 0;
+
+// Worker Thread Pool Setup
+const WORKER_COUNT = 4;
+const workerPool = Array.from({ length: WORKER_COUNT }, () => 
+    new Worker(path.join(__dirname, 'worker.js'))
+);
+
+// Function to get the next available worker (Round Robin)
+let workerIndex = 0;
+function getWorker() {
+    const worker = workerPool[workerIndex];
+    workerIndex = (workerIndex + 1) % WORKER_COUNT;
+    return worker;
+}
+
+function startTCPServer() {
+    const server = net.createServer((socket) => {
+        const clientAddress = `${socket.remoteAddress}:${socket.remotePort}`;
+        uniqueConnections.add(clientAddress);
+        maxConnections = Math.max(maxConnections, uniqueConnections.size);
+
+        console.log(`New device connected: ${clientAddress} | Active Connections: ${uniqueConnections.size}`);
+
+        socket.on('data', async (data) => {
+          const hexData = data.toString('hex').toUpperCase();
+          console.log(`Received data from ${clientAddress}: ${hexData}`);
+      
+          try {
+            const parsedData = parsePacket(data, socket);
+                // console.log('Parsed Data:', parsedData);
+              //  const addData={ rawData: hexData || '',  // Ensure rawData is not null
+              //   parseData: `${parsedData.data}` || '{}',  // Fix property name
+              //   resData: `${parsedData.resData}` || '' }
+                // await query('CALL insert_gps_logs_bulk($1::JSONB);', [ {rawData: hexData || '',  // Ensure rawData is not null
+                //   parseData: `${parsedData.data}` || '{}',  // Fix property name
+                //   resData: `${parsedData.resData}` || '' }
+                // ]);
+
+// if(parsedData.resData!=='unintegrated protocol'){
+//                 // Ensure parsedData is a proper string before sending to Kafka
+//                 await produceToKafka('gps-data', clientAddress, JSON.stringify({
+//                     clientAddress,
+//                     rawData: hexData,  // Raw packet data as a hex string
+//                     parsedData: parsedData.data,  // JSON string of parsed data
+//                     responseData: parsedData.resData, // Ensure responseData is a string
+//                     timestamp: new Date().toISOString(),
+//                 }));}
+              console.log(`📡 Data sent to Kafka directly from TCP server for ${clientAddress}`);
+          } catch (error) {
+              console.error('❌ Error sending data to Kafka:', error.message);
+          }
+      });
+
+        socket.on('close', () => {
+          uniqueConnections.delete(clientAddress);
+          console.log(`❌ Device disconnected: ${clientAddress}`);
+          console.log(`Current connections: ${uniqueConnections.size}`);
+          socket.destroy(); // Ensure socket is fully closed
+      });
+        socket.on('error', (err) => {
+            console.error(`Socket error for ${clientAddress}:`, err.message);
+        });
+
+        // Handle sudden socket timeoutFG
+      
     });
 
-    socket.on('close', () => {
-        // Remove from the set when disconnected
-        uniqueConnections.delete(clientAddress);
-        console.log(`Device disconnected: ${clientAddress}`);
-        console.log('Current connections:', uniqueConnections.size);
-        console.log('Max connections observed:', maxConnections);
+    server.on('error', (err) => {
+        console.error('TCP Server error:', err.message);
     });
 
-    socket.on('error', (err) => {
-        console.error(`Socket error for ${clientAddress}:`, err.message);
+    server.listen(2001, () => {
+        console.log('✅ TCP Server is running on port 2001');
     });
-});
-
-  server.listen(2001, () => {
-    console.log('TCP server running on port 6000');
-  });
 }
 
 // Start the server
-module.exports = { startTCPServer ,getCrc16};
+module.exports = { startTCPServer,getCrc16 ,parsePacket};

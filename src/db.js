@@ -7,8 +7,8 @@ const pool = new Pool({
   password: 'gps_desk_dev',       // PostgreSQL password
   database: 'postgres',         // Database name
   max: 20,                     // Increase max connections for workers
-  idleTimeoutMillis: 30000,     // Close idle clients after 30 sec
-  connectionTimeoutMillis: 5000 // Increase timeout for new connections
+  // idleTimeoutMillis: 3000000000,     // Close idle clients after 30 sec
+  connectionTimeoutMillis: 50000000 // Increase timeout for new connections
 });
 
 // Query wrapper for executing SQL queries
