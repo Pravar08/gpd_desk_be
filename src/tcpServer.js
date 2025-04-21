@@ -4,9 +4,12 @@ const { parsePacketAlarm } = require('./protocols/alarm');
 const { Worker } = require('worker_threads');
 const path = require('path');
 const { produceToKafka } = require('./kafka');
-const { query } = require('./db');
-const { loginPacketInsertion, extractIMEI } = require('./modules/login');
+const { query, pool } = require('./db');
+const { loginPacketInsertion, extractIMEIFromPacket } = require('./modules/login');
 const { insertLatLong } = require('./modules/latLong');
+const clientTerminalMap = new Map();
+let maxConnections = 0;
+const uniqueConnections = new Set();
 
 
 // CRC-16 lookup table
@@ -204,11 +207,11 @@ function extractLatLong(packet) {
 
 
 // Parse Incoming Packet
-function parsePacket(data, socket) {
+function parsePacket(data, socket,terminal) {
   // if (data[0] !== 0x78 || data[1] !== 0x78||data[0] !==0x79 || data[1] !== 0x79) {
   //   throw new Error('Invalid start marker');
   // }
-
+console.log('term check',terminal)
   const packetLength = data[2];
   console.log('Packet Length:', packetLength);
 
@@ -234,9 +237,10 @@ function parsePacket(data, socket) {
     if (receivedCRC === calculatedCRC) {
       console.log('CRC validation passed. Sending response...');
      const responseLogin= sendResponsePacketLogin(socket, serialNumber);
-     const imei=extractIMEI(data.toString('hex'))
+     const imei=extractIMEIFromPacket(data.toString('hex'))
+     console.log("IMEI CHECK",imei)
        loginPacketInsertion(responseLogin.data,imei,data.toString('hex'),responseLogin.responseData)
-    } else {
+      } else {
       console.error(`CRC validation failed. Received: ${receivedCRC.toString(16).toUpperCase()}, Calculated: ${calculatedCRC.toString(16).toUpperCase()}`);
     }
   } 
@@ -247,7 +251,7 @@ function parsePacket(data, socket) {
     // Parse latitude and longitude
     const { latitude, longitude,speed } = extractLatLong(data);
     console.log(`Latitude: ${latitude}, Longitude: ${longitude},speed: ${speed}`);
-    insertLatLong(serialNumber,latitude,longitude,speed)
+    insertLatLong(terminal,latitude,longitude,speed)
     return {resData:''.responseData,data:JSON.stringify({Latitude:latitude,longitude,speed })}
 
     // No response needed for GPS data
@@ -333,8 +337,18 @@ function parsePacket(data, socket) {
 //   });
 // }
 
-const uniqueConnections = new Set();
-let maxConnections = 0;
+async function getTerminalId(clientAddress) {
+  try {
+      const result = await pool.query(
+          'SELECT terminal_id FROM active_connections_view WHERE client_address = $1 LIMIT 1',
+          [clientAddress]
+      );
+      return result.rows.length ? result.rows[0].terminal_id : 'unknown';
+  } catch (err) {
+      console.error('❌ Error fetching terminal ID:', err.message);
+      return null;
+  }
+}
 
 // Worker Thread Pool Setup
 const WORKER_COUNT = 4;
@@ -363,7 +377,20 @@ function startTCPServer() {
           console.log(`Received data from ${clientAddress}: ${hexData}`);
       
           try {
-            const parsedData = parsePacket(data, socket);
+            const protocolNumber = data[3];
+            if (protocolNumber === 0x01) {
+            const imei=extractIMEIFromPacket(data.toString('hex'))
+            pool.query(`INSERT INTO active_connections (client_address, terminal_id, last_seen)
+VALUES ($1, $2, NOW())
+ON CONFLICT (client_address)
+DO UPDATE SET last_seen = NOW();`,[clientAddress,imei])
+            }else{
+              pool.query(`UPDATE active_connections
+SET last_seen = NOW()
+WHERE client_address = $1;`,[clientAddress])
+            }
+            const terminal= await getTerminalId(clientAddress)
+            const parsedData = parsePacket(data, socket,terminal);
                 // console.log('Parsed Data:', parsedData);
               //  const addData={ rawData: hexData || '',  // Ensure rawData is not null
               //   parseData: `${parsedData.data}` || '{}',  // Fix property name
@@ -410,6 +437,19 @@ function startTCPServer() {
         console.log('✅ TCP Server is running on port 2001');
     });
 }
+async function cleanupConnections() {
+  try {
+      await pool.query('CALL cleanup_old_connections()');
+      console.log('✅ Old connections cleaned up successfully');
+  } catch (err) {
+      console.error('❌ Error cleaning up connections:', err.message);
+  }
+}
 
+// Run cleanup every 3 hours (10,800,000 milliseconds)
+setInterval(cleanupConnections, 3 * 60 * 60 * 1000);
+
+// Call once on startup
+cleanupConnections();
 // Start the server
 module.exports = { startTCPServer,getCrc16 ,parsePacket};

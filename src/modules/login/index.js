@@ -36,21 +36,33 @@ routerLoginPacket.get('/gps-login/:id', async (req, res) => {
     ]);
     console.log('Login details inserted')
  }
- function extractIMEI(hexString) {
-    // Convert hex string to an array of bytes
-    console.log('dataaaa',hexString)
-    let bytes = hexString.split(" ").map(byte => parseInt(byte, 16));
-    console.log('bytes',bytes)
-    // Terminal ID starts at the 4th byte (index 4) and is 8 bytes long
-    let terminalIdBytes = bytes.slice(4, 12);
-    console.log('terminalIdBytes',terminalIdBytes)
-    
-    // Convert bytes to a decimal IMEI number
-    let imei = terminalIdBytes.map(byte => byte.toString(16).padStart(2, '0')).join('');
-    console.log('Login details ImEI',imei)
-    return `${imei}`;
+ function extractIMEIFromPacket(packetHex) {
+    console.log('Packet Check:', packetHex);
+
+    // Convert continuous hex string into an array of byte pairs
+    let bytes = packetHex.match(/.{1,2}/g); // Splits into 2-character hex values
+
+    if (!bytes || bytes.length < 12) {
+        console.log('Invalid packet format');
+        return null;
+    }
+
+    // Terminal ID is located at bytes index 4 to 11 (8 bytes)
+    let terminalIDBytes = bytes.slice(4, 12);
+
+    // Convert BCD encoded bytes to a string
+    let imei = terminalIDBytes.map(byte => byte.padStart(2, '0')).join("");
+    console.log('Extracted IMEI (before processing):', imei);
+
+    // Ensure it's 15 digits by removing any leading zero
+    if (imei.length === 16 && imei.startsWith("0")) {
+        imei = imei.slice(1);
+    }
+
+    console.log('Final IMEI:', imei);
+    return imei;
 }
 
 
 
-module.exports = {routerLoginPacket,loginPacketInsertion,extractIMEI};
+module.exports = {routerLoginPacket,loginPacketInsertion,extractIMEIFromPacket};

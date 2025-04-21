@@ -5,6 +5,7 @@ const routes = require('./routes');
 const { startTCPServer } = require('./tcpServer');
 const db = require('./db'); // Import the db module
 const gpsLogsRoutes = require('./routes/gpsLogs');
+const { customerRouter } = require('./modules/customer');
 
 const getServerTime = async () => {
   try {
@@ -22,6 +23,8 @@ app.use(cors()); // Enable CORS
 app.use(express.json());
 
 app.use('/api', gpsLogsRoutes);
+app.use('/api', customerRouter);
+
 const PORT = process.env.PORT || 8000;
 
 app.use(express.json());
