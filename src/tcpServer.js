@@ -3,7 +3,7 @@ const { generalInfoPacketParse } = require('./protocols/generalInfo');
 const { parsePacketAlarm } = require('./protocols/alarm');
 const { Worker } = require('worker_threads');
 const path = require('path');
-const { produceToKafka } = require('./kafka');
+// const { produceToKafka } = require('./kafka');
 const { query, pool } = require('./db');
 const { loginPacketInsertion, extractIMEIFromPacket } = require('./modules/login');
 const { insertLatLong } = require('./modules/latLong');
@@ -239,7 +239,7 @@ console.log('term check',terminal)
      const responseLogin= sendResponsePacketLogin(socket, serialNumber);
      const imei=extractIMEIFromPacket(data.toString('hex'))
      console.log("IMEI CHECK",imei)
-       loginPacketInsertion(responseLogin.data,imei,data.toString('hex'),responseLogin.responseData)
+      //  loginPacketInsertion(responseLogin.data,imei,data.toString('hex'),responseLogin.responseData)
       } else {
       console.error(`CRC validation failed. Received: ${receivedCRC.toString(16).toUpperCase()}, Calculated: ${calculatedCRC.toString(16).toUpperCase()}`);
     }
@@ -251,7 +251,7 @@ console.log('term check',terminal)
     // Parse latitude and longitude
     const { latitude, longitude,speed } = extractLatLong(data);
     console.log(`Latitude: ${latitude}, Longitude: ${longitude},speed: ${speed}`);
-    insertLatLong(terminal,latitude,longitude,speed)
+    // insertLatLong(terminal,latitude,longitude,speed)
     return {resData:''.responseData,data:JSON.stringify({Latitude:latitude,longitude,speed })}
 
     // No response needed for GPS data
