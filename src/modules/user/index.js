@@ -54,6 +54,19 @@ userRouter.post('/user/add-user', async (req, res) => {
     }
   });
 
+  userRouter.get('/user/details-inactive', async (req, res) => {
+    const limit = parseInt(req.query.limit) || 100;
+    const offset = parseInt(req.query.offset) || 0;
+  
+    try {
+      const { rows } = await pool.query(`SELECT * FROM get_user_basic_details_inactive($1, $2);`, [limit, offset]);
+      res.status(200).json(rows);
+    } catch (err) {
+      console.error('Error fetching user details:', err.message);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
 
   
   userRouter.delete('/user/delete/:id', async (req, res) => {
@@ -68,10 +81,25 @@ userRouter.post('/user/add-user', async (req, res) => {
       res.status(200).json({ message: 'User deleted successfully ' });
     } catch (err) {
       console.error('Error deleting user:', err.message);
-      res.status(500).json({ error: 'Internal server error' });
+      res.status(500).json({ error: err});
     }
   });
 
+  userRouter.post('/user/active/:id', async (req, res) => {
+    const userId = parseInt(req.params.id);
+  
+    if (!userId) {
+      return res.status(400).json({ error: 'User detail is required and must be valid ' });
+    }
+  
+    try {
+      await pool.query('SELECT active_user_by_id($1);', [userId]);
+      res.status(200).json({ message: 'User deleted successfully ' });
+    } catch (err) {
+      console.error('Error deleting user:', err.message);
+      res.status(500).json({ error: err });
+    }
+  });
   
   userRouter.put('/user/update/:id', async (req, res) => {
     const userId = parseInt(req.params.id);

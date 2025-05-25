@@ -9,6 +9,9 @@ const { customerRouter } = require('./modules/customer');
 const userRouter = require('./modules/user');
 const VehicleRouter = require('./modules/vehicle');
 const DriverRouter = require('./modules/driver');
+const RoutesRouter = require('./modules/routes');
+const RoleRouter = require('./modules/role');
+const { routerLatLongPacket } = require('./modules/latLong');
 
 const getServerTime = async () => {
   try {
@@ -149,13 +152,18 @@ app.use('/api', customerRouter);
 app.use('/api',userRouter);
 app.use('/api',VehicleRouter);
 app.use('/api',DriverRouter);
+app.use('/api',RoutesRouter);
+app.use('/api',RoleRouter);
+app.use('/api',routerLatLongPacket);
+
+
+
 
 
 
 
 const PORT = process.env.PORT || 8000;
 
-app.use(express.json());
 // app.use('/api', routes);
 
 app.listen(PORT, () => {

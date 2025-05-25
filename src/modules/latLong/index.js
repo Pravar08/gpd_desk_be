@@ -27,7 +27,43 @@ routerLatLongPacket.get('/locations-last-24h/:serial_no', async (req, res) => {
         res.status(500).json({ error: 'Database error' });
     }
 });
+routerLatLongPacket.get('/locations-last', async (req, res) => {
+    const { serial_no } = req.params;
+    try {
+        const result = await pool.query('SELECT * FROM get_latest_vehicle_location_info()');
+        res.status(200).json(result.rows);
+    } catch (error) {
+        console.error('Error fetching last 24h locations:', error);
+        res.status(500).json({ error: error });
+    }
+});
 
+
+routerLatLongPacket.get('/vehicle-activity', async (req, res) => {
+    const { serial_no, start_time, end_time } = req.query;
+  
+    if (!serial_no) {
+      return res.status(400).json({ error: 'serial_no is required' });
+    }
+  
+    // const query = {
+    //   text: `
+      
+    //   `,
+    //   [serial_no, start_time || null, end_time || null]
+    // };
+  
+    try {
+        const result = await pool.query(
+            `SELECT * FROM get_vehicle_activity($1, $2, $3)`,
+            [serial_no, start_time || null, end_time || null]
+          );
+      res.json(result.rows);
+    } catch (err) {
+      console.error('Error executing query:', err);
+      res.status(500).json({ error: 'Internal server error', details: err });
+    }
+  });
 
 async function insertLatLong(serial_no, latitude, longitude, speed) {
     try {

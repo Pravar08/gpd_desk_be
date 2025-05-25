@@ -1,6 +1,7 @@
 const express = require('express');
 const VehicleRouter = express.Router();
-const pool = require('../../db'); // adjust to your DB config path
+const { pool } = require('../../db');
+ // adjust to your DB config path
 
 VehicleRouter.post('/vehicle/add', async (req, res) => {
     const {
@@ -48,12 +49,12 @@ VehicleRouter.post('/vehicle/add', async (req, res) => {
     }
   
     try {
-      const result = await db.pool.query(
+      const result = await pool.query(
         `SELECT add_vehicle_with_details(
           $1, $2, $3, $4, $5, $6, $7, $8,
           $9, $10, $11, $12, $13, $14, $15, $16,
           $17, $18, $19, $20, $21, $22, $23, $24,
-          $25, $26, $27, $28, $29, $30, $31
+          $25, $26, $27, $28, $29, $30
         )`,
         [
           licensePlate,
@@ -113,6 +114,19 @@ VehicleRouter.get('/vehicle/fetch', async (req, res) => {
     }
   });
 
+  VehicleRouter.get('/vehicle/fetchbyCustomer', async (req, res) => {
+    const limit = parseInt(req.query.customerId) 
+
+  
+    try {
+      const { rows } = await pool.query(`SELECT * FROM fetch_vehicle_list_with_basic_details_withCustomerId($1)`, [+limit]);
+      res.status(200).json(rows);
+    } catch (err) {
+      console.error('Error fetching user details:', err.message);
+      res.status(500).json({ error: err,limit});
+    }
+  });
+
   VehicleRouter.get('/vehicle/get/:id', async (req, res) => {
     const vehicleId = parseInt(req.params.id);
     try {
@@ -122,6 +136,113 @@ VehicleRouter.get('/vehicle/fetch', async (req, res) => {
       res.json(data.rows[0]);
     } catch (err) {
       res.status(500).json({ error: 'Failed to fetch vehicle details' });
+    }
+  });
+
+  VehicleRouter.post('/vehicle/update', async (req, res) => {
+    const {
+      vehicle_id,
+      license_plate,
+      vin,
+      imei_number,
+      customer_id,
+      make,
+      model,
+      year_of_manufacture,
+      color,
+      vehicle_type,
+      seating_capacity,
+      engine_capacity,
+      fuel_type,
+      transmission_type,
+      body_type,
+      power_output,
+      odometer_reading,
+      last_service_date,
+      next_service_date,
+      odometer_meter_reading,
+      registration_date,
+      insurance_expiry_date,
+      road_tax_expiry_date,
+      owner_name,
+      owner_contact,
+      owner_address,
+      owner_aadhar,
+      owner_dl,
+      sim_number,
+      sensors_taken,
+      subscription_expiry
+    } = req.body;
+  
+    console.log('reqbody', req.body);
+  
+    try {
+      await pool.query(
+        `SELECT update_vehicle_with_details(
+          $1, $2, $3, $4, $5,
+          $6, $7, $8, $9, $10,
+          $11, $12, $13, $14, $15,
+          $16, $17, $18, $19, $20,
+          $21, $22, $23, $24, $25,
+          $26, $27, $28, $29, $30,
+          $31
+        );`,
+        [
+          vehicle_id,
+          license_plate,
+          vin,
+          imei_number,
+          customer_id,
+          make,
+          model,
+          year_of_manufacture,
+          color,
+          vehicle_type,
+          seating_capacity,
+          engine_capacity,
+          fuel_type,
+          transmission_type,
+          body_type,
+          power_output,
+          odometer_reading,
+          last_service_date,
+          next_service_date,
+          odometer_meter_reading,
+          registration_date,
+          insurance_expiry_date,
+          road_tax_expiry_date,
+          owner_name,
+          owner_contact,
+          owner_address,
+          owner_aadhar,
+          owner_dl,
+          sim_number,
+          sensors_taken,
+          subscription_expiry
+        ]
+      );
+  
+      res.status(200).json({ message: 'Vehicle details updated successfully' });
+    } catch (error) {
+      console.error('Error updating vehicle details:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+  
+
+  VehicleRouter.post('/vehicle/delete', async (req, res) => {
+    const { vehicle_id } = req.body;
+  
+    if (!vehicle_id) {
+      return res.status(400).json({ error: 'Vehicle ID is required' });
+    }
+  
+    try {
+      await pool.query('SELECT soft_delete_vehicle($1);', [vehicle_id]);
+      res.status(200).json({ message: 'Vehicle soft-deleted successfully' });
+    } catch (error) {
+      console.error('Error soft-deleting vehicle:', error);
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 module.exports = VehicleRouter;

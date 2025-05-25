@@ -87,6 +87,24 @@ customerRouter.post('/customers/fetch', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+customerRouter.post('/customers/fetch_inactive', async (req, res) => {
+  const { pagenumber, limit } = req.body;
+  const OFFSET = (pagenumber) * limit
+  try {
+    const result = await pool.query(
+      'SELECT * FROM get_basic_customer_info_inactive_paginated($1, $2)',
+      [limit, OFFSET]
+    );
+
+
+    const customer = result.rows;
+    res.json({ message: 'Login successful', data:customer });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 // Update Customer
 customerRouter.put('/customers/update/:id', async (req, res) => {
   const { id } = req.params;
@@ -106,7 +124,7 @@ customerRouter.put('/customers/update/:id', async (req, res) => {
     mobile,
     email,
     username,
-    status
+    status=1
   } = req.body;
 
   try {
@@ -129,7 +147,7 @@ customerRouter.put('/customers/update/:id', async (req, res) => {
         mobile,
         email,
         username,
-        status
+        1
       ]
     );
     res.json({ message: result.rows[0].update_customer_with_details });
@@ -148,6 +166,50 @@ customerRouter.delete('/customers/delete/:id', async (req, res) => {
       [parseInt(id)]
     );
     res.json({ message: result.rows[0].delete_customer_by_id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+customerRouter.post('/customers/active/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      'SELECT active_customer_by_id($1)',
+      [parseInt(id)]
+    );
+    res.json({ message: result.rows[0].delete_customer_by_id });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+customerRouter.get('/customers/details/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      'SELECT get_full_customer_info_json($1)',
+      [id]
+    );
+    res.json({ data: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+customerRouter.get('/customers/branch/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      `select branches from customer_details
+WHERE id=${id}
+`
+    );
+    res.json({ data: result.rows[0] });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
