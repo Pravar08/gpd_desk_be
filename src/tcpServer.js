@@ -10,7 +10,18 @@ const { insertLatLong } = require('./modules/latLong');
 const clientTerminalMap = new Map();
 let maxConnections = 0;
 const uniqueConnections = new Set();
+const CryptoJS = require("crypto-js");
 
+const password = "123456";
+const fixedKey = "f3b9e1c82d5c4b7593e1f8a2c2e7b354";
+
+// Encrypt it (simulate frontend)
+const encrypted = CryptoJS.AES.encrypt(password, fixedKey).toString();
+console.log("Encrypted:", encrypted);
+
+// Now try decrypting it (simulate backend)
+const decrypted = CryptoJS.AES.decrypt(encrypted, fixedKey).toString(CryptoJS.enc.Utf8);
+console.log("Decrypted password:", decrypted);
 
 // CRC-16 lookup table
 const crctab16 = [
@@ -251,7 +262,7 @@ console.log('term check',terminal)
     // Parse latitude and longitude
     const { latitude, longitude,speed } = extractLatLong(data);
     console.log(`Latitude: ${latitude}, Longitude: ${longitude},speed: ${speed}`);
-    // insertLatLong(terminal,latitude,longitude,speed)
+    insertLatLong(terminal,latitude,longitude,speed)
     return {resData:''.responseData,data:JSON.stringify({Latitude:latitude,longitude,speed })}
 
     // No response needed for GPS data
